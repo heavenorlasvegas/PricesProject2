@@ -50,6 +50,8 @@ def scrape_prices(city, ingredient, category=""):
 
     options = webdriver.ChromeOptions()
     options.headless = True
+
+    # FROM: https://github.com/Franky1/Streamlit-Selenium/blob/main/streamlit_app.py
     options.add_argument("--headless")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
@@ -58,6 +60,7 @@ def scrape_prices(city, ingredient, category=""):
     options.add_argument("--window-size=1920x1080")
     options.add_argument("--disable-features=VizDisplayCompositor")
     driver = uc.Chrome(options=options)
+    # END FROM
 
     #driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
 
