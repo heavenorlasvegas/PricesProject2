@@ -83,6 +83,8 @@ def scrape_prices(city, ingredient, category=""):
         except sce.TimeoutException:
             pass
 
+    st.image(driver.get_screenshot_as_png())
+
     new_version = bool(sel("input.search-bar__input"))
     if new_version:
         s = {'search': "input.search-bar__input",
@@ -109,6 +111,7 @@ def scrape_prices(city, ingredient, category=""):
     sleep(1)
     sel("button.obtainment-delivery__apply-btn-desktop")[0].click()
 
+    st.image(driver.get_screenshot_as_png())
     st.write("Город выбран!")
 
     sel(s['search'])[s['index']].send_keys(ingredient)
@@ -116,12 +119,15 @@ def scrape_prices(city, ingredient, category=""):
 
     sleep(3)
 
+    st.image(driver.get_screenshot_as_png())
+
     if category:
         category_links = sel(s['catalog'])[0].find_elements(By.TAG_NAME, "a")
         for link in category_links:
             if link.get_attribute("innerHTML").find(category) > -1:
-                st.image(driver.get_screenshot_as_png())
                 link.click()
+
+    st.write("Категория выбрана!")
 
     while sel(s['more_button']):
         try:
