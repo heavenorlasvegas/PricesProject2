@@ -51,9 +51,10 @@ def scrape_prices(city, ingredient, category=""):
     options = webdriver.ChromeOptions()
     options.headless = True
     options.add_argument("--start-maximized")
-    # options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    # options.add_experimental_option('useAutomationExtension', False)
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    options.add_experimental_option('useAutomationExtension', False)
     driver = uc.Chrome(options=options)
+
     #driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
 
 
