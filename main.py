@@ -120,6 +120,7 @@ def scrape_prices(city, ingredient, category=""):
         category_links = sel(s['catalog'])[0].find_elements(By.TAG_NAME, "a")
         for link in category_links:
             if link.get_attribute("innerHTML").find(category) > -1:
+                st.image(driver.get_screenshot_as_png())
                 link.click()
 
     while sel(s['more_button']):
