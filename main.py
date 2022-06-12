@@ -3,6 +3,7 @@ import selenium
 from selenium import webdriver
 from selenium.common import exceptions as sce
 from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.by import By
 import pandas as pd
@@ -12,6 +13,8 @@ from time import sleep
 import requests
 import re
 import streamlit as st
+from webdriver_manager.utils import ChromeType
+
 
 
 def get_address(city):
@@ -42,7 +45,9 @@ def get_address(city):
 
 
 def scrape_prices(city, ingredient, category=""):
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
+    options = Options()
+    options.add_argument("--headless")
+    driver = webdriver.Chrome(ChromeDriverManager(chrome_type=ChromeType.CHROMIUM).install())
     driver.maximize_window()
     driver.set_page_load_timeout(10)
 
