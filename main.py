@@ -19,7 +19,7 @@ import undetected_chromedriver as uc
 
 def get_address(city):
     if city == 'Пермь':
-        return "Пермь, улица Ленина, 76"  # костыль
+        return "Пермь, улица Куйбышева, 1"  # костыль
     entrypoint = "https://nominatim.openstreetmap.org/search"
     params = {'q': city,
               'format': 'geojson'}
