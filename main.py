@@ -12,6 +12,11 @@ from time import sleep
 import requests
 import re
 import streamlit as st
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.common.exceptions import TimeoutException
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.common.exceptions import NoSuchElementException
 
 
 def get_address(city):
@@ -42,8 +47,12 @@ def get_address(city):
 
 
 def scrape_prices(city, ingredient, category=""):
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
-    driver.maximize_window()
+    chrome_options = Options()
+    chrome_options.add_argument('disable-notifications')
+    chrome_options.add_argument('disable-infobars')
+    chrome_options.add_argument('start-maximized')
+
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
     driver.set_page_load_timeout(10)
 
     def sel(selector):
