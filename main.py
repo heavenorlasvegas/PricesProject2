@@ -14,10 +14,12 @@ from time import sleep
 import requests
 import re
 import streamlit as st
-
+import undetected_chromedriver as uc
 
 
 def get_address(city):
+    if city == 'Пермь':
+        return "Пермь, улица Ленина, 76"  # костыль
     entrypoint = "https://nominatim.openstreetmap.org/search"
     params = {'q': city,
               'format': 'geojson'}
@@ -39,34 +41,37 @@ def get_address(city):
             house_number = r["house_number"]
         if "road" in r:
             road = r["road"]
-        offset[0] += 0.001
-        offset[1] += 0.001
+        offset[0] += 0.0001
+        offset[1] += 0.0001
     return ", ".join([city, road, house_number])
 
 
 def scrape_prices(city, ingredient, category=""):
-    options = Options()
-    #options.add_argument("--headless")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    #options.add_argument("--disable-gpu")
-    #options.add_argument("--disable-features=NetworkService")
-    #options.add_argument("--window-size=1920x1080")
-    #options.add_argument("--disable-features=VizDisplayCompositor")
 
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+    options = webdriver.ChromeOptions()
+    options.headless = True
+    options.add_argument("--start-maximized")
+    # options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    # options.add_experimental_option('useAutomationExtension', False)
+    driver = uc.Chrome(options=options)
+    #driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+
+
+
     driver.set_page_load_timeout(10)
 
     def sel(selector):
         return driver.find_elements(By.CSS_SELECTOR, selector)
 
 
-
+    c = 0
     while not sel("input.search-bar__input") and not sel("input.header__search-i"):
         try:
-            driver.get("http://online.metro-cc.ru")
-            print("Попытка подключения")
-            sleep(1)
+            c += 1
+            if c <= 10:
+                st.write("Попытка подключения №" + str(c))
+                driver.get("http://online.metro-cc.ru")
+                sleep(1)
         except sce.TimeoutException:
             pass
 
@@ -88,12 +93,15 @@ def scrape_prices(city, ingredient, category=""):
              'product_name': "a.catalog-item_name",
              'more_button': "a.catalog-load-more__button"}
 
+    st.write("Подключение к сайту установлено!")
     sel(s['delivery'])[0].click()
     driver.find_element(By.ID, "search-input").send_keys(get_address(city))
 
     sel("button.obtainment-delivery__apply-btn-desktop")[0].click()
     sleep(1)
     sel("button.obtainment-delivery__apply-btn-desktop")[0].click()
+
+    st.write("Город выбран!")
 
     sel(s['search'])[s['index']].send_keys(ingredient)
     sel(s['search'])[s['index']].send_keys(Keys.ENTER)
@@ -109,10 +117,11 @@ def scrape_prices(city, ingredient, category=""):
     while sel(s['more_button']):
         try:
             sel(s['more_button'])[0].click()
+            st.write("Листаю сайт :)")
         except selenium.common.exceptions.ElementNotInteractableException:
-            print('проблема с кнопкой')
+            print('Проблема с кнопкой')
         sleep(3)
-
+    st.write("Продукты выгружены, обрабатываю таблицу.")
     products = driver.find_elements(By.CSS_SELECTOR, s['product'])
     rows = []
     for product in products:
@@ -144,5 +153,6 @@ def scrape_prices(city, ingredient, category=""):
     driver.quit()
     return df
 def scrape():
-    st.write(scrape_prices('Москва', 'яблоки', 'Фрукты'))
+    st.write(scrape_prices('Пермь', 'консервы', 'Мясные консервы'))
+
 st.button(label="Начать скрэппинг", on_click=scrape)
