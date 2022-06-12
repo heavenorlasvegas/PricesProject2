@@ -4,6 +4,8 @@ from selenium import webdriver
 from selenium.common import exceptions as sce
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.common.by import By
 import pandas as pd
 from selenium.webdriver.common.keys import Keys
@@ -12,11 +14,7 @@ from time import sleep
 import requests
 import re
 import streamlit as st
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.common.exceptions import TimeoutException
-from selenium.webdriver.common.action_chains import ActionChains
-from selenium.common.exceptions import NoSuchElementException
+
 
 
 def get_address(city):
@@ -47,12 +45,16 @@ def get_address(city):
 
 
 def scrape_prices(city, ingredient, category=""):
-    chrome_options = Options()
-    chrome_options.add_argument('disable-notifications')
-    chrome_options.add_argument('disable-infobars')
-    chrome_options.add_argument('start-maximized')
+    options = Options()
+    #options.add_argument("--headless")
+    #options.add_argument("--no-sandbox")
+    #options.add_argument("--disable-dev-shm-usage")
+    #options.add_argument("--disable-gpu")
+    #options.add_argument("--disable-features=NetworkService")
+    #options.add_argument("--window-size=1920x1080")
+    #options.add_argument("--disable-features=VizDisplayCompositor")
 
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
     driver.set_page_load_timeout(10)
 
     def sel(selector):
@@ -62,7 +64,9 @@ def scrape_prices(city, ingredient, category=""):
 
     while not sel("input.search-bar__input") and not sel("input.header__search-i"):
         try:
-            driver.get("https://online.metro-cc.ru")
+            driver.get("http://online.metro-cc.ru")
+            print("Попытка подключения")
+            sleep(1)
         except sce.TimeoutException:
             pass
 
@@ -140,5 +144,5 @@ def scrape_prices(city, ingredient, category=""):
     driver.quit()
     return df
 def scrape():
-    st.write(scrape_prices('Воронеж', 'торт', 'Торты, пироги, пирожные'))
+    st.write(scrape_prices('Москва', 'яблоки', 'Фрукты'))
 st.button(label="Начать скрэппинг", on_click=scrape)
