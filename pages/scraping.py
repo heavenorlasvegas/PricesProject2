@@ -17,28 +17,31 @@ import streamlit as st
 import undetected_chromedriver as uc
 from datetime import date
 from google.oauth2 import service_account
-from gsheetsdb import connect
+from shillelagh.backends.apsw.db import connect
+import pymorphy2
 
 
+
+morph = pymorphy2.MorphAnalyzer()
+db = st.secrets["private_gsheets_url"]
+db_conn = connect(":memory:", adapter_kwargs={"gsheetsapi": {
+                "service_account_info": st.secrets["gcp_service_account"]
+            }})
 with st.echo(code_location='below'):
     def scrape_prices(city, ingredient, category=""):
 
         # ЧАСТЬ 1. Проверяем, не собраны ли уже данные
         with st.spinner("Ищу данные в таблице..."):
-            db = st.secrets["private_gsheets_url"]
-            credentials = service_account.Credentials.from_service_account_info(
-                st.secrets["gcp_service_account"], scopes=["https://www.googleapis.com/auth/spreadsheets"])
 
-            db_conn = connect(credentials=credentials)
             today = date.today().strftime("%d.%m.%Y")
-            get_data = f'SELECT name, price, unit, price_per_kg, price_per_l FROM "{db}" WHERE ingredient = "{ingredient}" AND city = "{city}" AND date = "{today}"'
+            get_data = f'SELECT name, price, price_per_kg, price_per_l FROM "{db}" WHERE ingredient = "{ingredient}" AND city = "{city}" AND date = "{today}"'
             existing_data = pd.read_sql(get_data, db_conn)
         if not existing_data.empty:
             return existing_data
         else:
 
 
-            # ЧАСТЬ 2. Скрэппинг
+            # ЧАСТЬ 2. Если нет, то собираем их с сайта Metro
             try:
                 with st.spinner("Запускаю виртуальный браузер..."):
 
@@ -93,23 +96,24 @@ with st.echo(code_location='below'):
                              'more_button': "a.catalog-load-more__button"}
 
                 with st.spinner("Выбираю город..."):
+                    if city != "Москва":
+                        sel(s['delivery'])[0].click()
 
-                    sel(s['delivery'])[0].click()
 
-
-                    sel(".obtainments-list__content")[1].click()
-                    sel("div.select-item__input")[0].click()
-                    sleep(0.3)
-                    sel("input.multiselect__input")[0].send_keys(city)
-                    sel("input.multiselect__input")[0].send_keys(Keys.ENTER)
-                    sleep(0.3)
-                    sel("div.pickup__apply-btn-desk button")[0].click()
-                    sleep(0.3)
+                        sel(".obtainments-list__content")[1].click()
+                        sel("div.select-item__input")[0].click()
+                        sleep(0.3)
+                        sel("input.multiselect__input")[0].send_keys(city)
+                        sel("input.multiselect__input")[0].send_keys(Keys.ENTER)
+                        sleep(0.3)
+                        sel("div.pickup__apply-btn-desk button")[0].click()
+                        sleep(0.3)
 
 
                 with st.spinner("Ищу продукты..."):
 
                     sel(s['search'])[s['index']].send_keys(ingredient)
+                    sleep(0.3)
                     sel(s['search'])[s['index']].send_keys(Keys.ENTER)
 
                     sleep(3)
@@ -123,8 +127,11 @@ with st.echo(code_location='below'):
 
                 with st.spinner("Листаю сайт..."):
                     while sel(s['more_button']):
-                        sel(s['more_button'])[0].click()
-                        sleep(2)
+                        try:
+                            sel(s['more_button'])[0].click()
+                            sleep(2)
+                        except st.errors.StreamlitAPIException:
+                            break
 
                 with st.spinner("Собираю данные о ценах..."):
                     products = driver.find_elements(By.CSS_SELECTOR, s['product'])
@@ -156,7 +163,7 @@ with st.echo(code_location='below'):
                             rows.append([name, price, unit])
                     driver.quit()
             except Exception as exc:
-                print(exc)
+                print(str(exc))
                 return st.image(driver.get_screenshot_as_png())
         with st.spinner("Обрабатываю данные..."):
             def detect_kg(pr_name):
@@ -204,34 +211,33 @@ with st.echo(code_location='below'):
         with st.spinner("Сохраняю данные..."):
             df1 = df
             df1[['ingredient', 'city', 'date']] = [ingredient, city, today]
-            df1.to_sql('new_data', db_conn)
-            db_conn.execute(f"INSERT INTO {db} SELECT * FROM new_data")
-        return df
+            df1.to_sql("new_data", db_conn, method='multi', index=False)
+            db_conn.execute(f'INSERT INTO "{db}" SELECT * FROM new_data')
+        return df[['price', 'price_per_kg', 'price_per_l']]
 
 
-    city_list = ("Москве, Московской области, Санкт-Петербурге, Архангельске, Астрахани, Барнауле, Белгороде, Брянске, Владикавказе, Владимире, Волгограде, Волжском, Вологде, Воронеже, Екатеринбурге, Иваново, Иркутске, Ижевске, Казани, Калининграде, Калуге, Кемерово, Кирове, Краснодаре, Красноярске, Курске, Липецке, Магнитогорске, Набережных Челнах, Нижнем Новгороде, Новой Адыгее, Новокузнецке, Новосибирске, Новороссийске, Омске, Орле, Оренбурге, Пензе, Перми, Пятигорске, Ростове-на-Дону, Рязани, Самаре, Саратове, Смоленске, Серпухове, Ставрополе, Стерлитамаке, Сургуте, Твери, Тольятти, Томске, Туле, Тюмени, Уфе, Ульяновске, Чебоксарах, Челябинске, Ярославле"
+    city_list = ("Москве, Московская область, Санкт-Петербурге, Архангельске, Астрахани, Барнауле, Белгороде, Брянске, Владикавказе, Владимире, Волгограде, Волжском, Вологде, Воронеже, Екатеринбурге, Иваново, Иркутске, Ижевске, Казани, Калининграде, Калуге, Кемерово, Кирове, Краснодаре, Красноярске, Курске, Липецке, Магнитогорске, Набережные Челны, Нижний Новгород, Новая Адыгея, Новокузнецке, Новосибирске, Новороссийске, Омске, Орле, Оренбурге, Пензе, Перми, Пятигорске, Ростове-на-Дону, Рязани, Самаре, Саратове, Смоленске, Серпухове, Ставрополе, Стерлитамаке, Сургуте, Твери, Тольятти, Томске, Туле, Тюмени, Уфе, Ульяновске, Чебоксарах, Челябинске, Ярославле"
                  .split(", "))
 
-    city_select = st.selectbox("Искать товары в...", options=city_list)
+    def normal_form(word):
+        if word.find(" ") == -1:
+            return morph.parse(word)[0].normal_form.capitalize()
+        else:
+            return word
+
+    city_list = list(map(normal_form, city_list))
+
+
+    city_select = st.selectbox("Город", options=city_list)
     ingredient_input = st.text_input("Введите ингредиент")
     category_input = st.text_input("Введите категорию")
-    start_scrapping = st.button(label="Начать скрэппинг")
-    def get_city(city_select):
-        if city_select == "Московской области":
-            return "Московская область"
-        elif city_select == "Новой Адыгее":
-            return "Новая Адыгея"
-        elif city_select == "Набережных Челнах":
-            return "Набережные Челны"
-        elif city_select == "Нижнем Новгороде":
-            return "Нижний Новгород"
-        elif city_select == "Ростове-на-Дону":
-            return "Ростов-на-Дону"
-        else:
-            return city_select[:-1]
+    start_scraping = st.button(label="Вывести список цен")
 
-    if start_scrapping:
-        st.write(scrape_prices(get_city(city_select), ingredient_input, str(category_input)))
+
+    if start_scraping:
+        st.write(scrape_prices(city_select, ingredient_input, str(category_input)))
+
+
 
     st.markdown("***")
     st.write("Исходный код:")
