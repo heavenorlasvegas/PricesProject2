@@ -11,7 +11,6 @@ from selenium.webdriver.common.by import By
 import pandas as pd
 from selenium.webdriver.common.keys import Keys
 from time import sleep
-#import matplotlib.pyplot as plt
 import requests
 import re
 import streamlit as st
@@ -20,6 +19,9 @@ from datetime import date
 from shillelagh.backends.apsw.db import connect
 import pymorphy2
 morph = pymorphy2.MorphAnalyzer()
+import plotly.graph_objects as go
+import plotly.express as px
+import pydeck as pdk
 
 
 
@@ -246,27 +248,40 @@ with st.echo(code_location='below'):
         ingr_grams = int(ingr[1][:-2])
         recipe.loc[ingr_index] = ingr_grams
     recipe = recipe.transpose()
-    city_list = ("Москве, Московская область, Санкт-Петербурге, Архангельске, Астрахани, Барнауле, Белгороде, "
+    city_list = ("Московская область, Архангельске, Астрахани, Барнауле, Белгороде, "
                  "Брянске, Владикавказе, Владимире, Волгограде, Волжском, Вологде, Воронеже, Екатеринбурге, Иваново, "
                  "Иркутске, Ижевске, Казани, Калининграде, Калуге, Кемерово, Кирове, Краснодаре, Красноярске, Курске, "
                  "Липецке, Магнитогорске, Набережные Челны, Нижний Новгород, Новая Адыгея, Новокузнецке, "
-                 "Новосибирске, Новороссийске, Омске, Орле, Оренбурге, Пензе, Перми, Пятигорске, Ростове-на-Дону, "
+                 "Новосибирске, Новороссийске, Омске, Орле, Оренбурге, Пензе, Перми, Пятигорске,"
                  "Рязани, Самаре, Саратове, Смоленске, Серпухове, Ставрополе, Стерлитамаке, Сургуте, Твери, Тольятти, "
                  "Томске, Туле, Тюмени, Уфе, Ульяновске, Чебоксарах, Челябинске, Ярославле "
                  .split(", "))
-
+    ingredients = recipe.transpose().index
     def normal_form(word):
         if word.find(" ") == -1:
             return morph.parse(word)[0].normal_form.capitalize()
         else:
             return word
 
-    city_list = list(map(normal_form, city_list))
+    city_list = ["Москва", "Санкт-Петербург", "Ростов-на-Дону"] + list(map(normal_form, city_list))
     cat_for_ingr = {"молоко": "Молоко", "хлеб": "Хлеб, лаваш", "картофель": "Овощи", "капуста": "Овощи", "лук":
         "Овощи", "морковь": "Овощи", "свекла": "Овощи", "чеснок": "Овощи", "говядина лопатка": "",
                     "сметана": "Сметана"}
+    grams = recipe.transpose()["Масса, г."] / 1000
 
-    def calculate_index(city, quantile=0.2):
+    def calculate_index(city):
+        get_data = f'SELECT "price1", "price2", "price3", "price4", "price5", "price6", "price7", "price8", "price9" FROM "{db_index}" WHERE city = "{city}"'
+        existing_data = pd.read_sql(get_data, db_conn)
+        if not existing_data.empty:
+            df = pd.DataFrame({
+                "prices": np.array(existing_data[["price1", "price2", "price3", "price4", "price5", "price6",
+                                                "price7", "price8", "price9"]].iloc[0, :]),
+                "grams": grams
+            })
+            df["costs"] = df["prices"] * df["grams"]
+            df["index"] = np.sum(df["costs"])
+            return df
+        quantile = 0.2
         prices = pd.DataFrame()
         progress = 0.0
         my_bar = st.progress(progress)
@@ -275,49 +290,128 @@ with st.echo(code_location='below'):
             progress += 1/9
             progress = min(1, progress)
             my_bar.progress(progress)
-        prices_quant = np.nanquantile(prices, quantile, axis=0)
-        grams = recipe.transpose()["Масса, г."] / 1000
+        prices_quant = np.quantile(prices.dropna(), quantile, axis=0)
         costs = prices_quant * grams
-        return pd.DataFrame({"quant": quantile,
-                             "prices": prices_quant,
+        index = np.sum(costs)
+        command = f'INSERT INTO "{db_index}" VALUES ("{city}", "{today}", {index}, {", ".join(prices_quant.astype(str))})'
+        db_conn.execute(command)
+        return pd.DataFrame({"prices": prices_quant,
                              "grams": grams,
                              "costs": costs,
-                             "index": sum(costs)})
+                             "index": index})
 
 
 
-
-    # Фронтенд
+    # Содержимое страницы
 
     st.title("Индекс борща")
 
-    st.markdown("""**Индекс борща** — это интуитивно понятная метрика потребительских цен и реальных доходов населения,
+    st.markdown("""**Индекс борща 🍲** — это интуитивно понятная метрика потребительских цен и реальных доходов населения,
     предложенная [Владимирстатом](https://vladimirstat.gks.ru/) и популяризированная изданием 
-    [Ведомости](https://vedomosti.ru). Индекс рассчитывается как количество блюд на четверых,
-    которые можно приготовить, потратив при этом весь средний располагаемый доход.""")
+    [Ведомости](https://vedomosti.ru). Индекс рассчитывается как количество блюд на четверых (условно говоря, кастрюль),
+    которые можно приготовить, потратив при этом весь средний подушевой доход. Эта программа позволяет рассчитать 
+    чуть более простой индикатор — стоимость одной кастрюли борща в различных городах. Программа опирается на цены
+      в крупной сети гипермаркетов России — Metro. """)
     
     st.subheader("Рецепт борща")
 
     st.dataframe(recipe)
 
 
-    st.subheader("Посчитать индекс борща")
+    st.subheader("Вычислить стоимость кастрюли борща")
 
     with st.container():
 
         city_select1 = st.selectbox("Город", options=city_list, key="city1")
         calculate_button = st.button(label="Посчитать индекс!")
-        c = st.empty()
+        st.write("Если города нет на карте ниже, то данные по нему еще не собраны в таблице. В таком случае запустится "
+                 "процедура веб-скрэппинга, которая будет проходить в фоновом режиме, но может занять несколько минут."
+                 " В процессе скрэппинга нередко возникают ошибки, однако большинство из них «лечится» запуском"
+                 " скрэппинга заново 😊")
+        c1 = st.empty()
         if calculate_button:
             borsch_index = calculate_index(city_select1)
             ind_val = borsch_index["index"][0]
-            command = f'INSERT INTO "{db_index}" VALUES ("{city_select1}", "{today}", {ind_val})'
-            db_conn.execute(command)
-            c.write(ind_val)
+            st.markdown(f"Стоимость кастрюли борща в городе {city_select1} составляет **{ind_val:.2f} руб.**")
+            pic = px.pie(borsch_index, values="costs", names=ingredients, title="Из чего складывается стоимость?")
+
+            st.plotly_chart(pic)
+    st.subheader("Сравнить цены в разных городах")
+
+
+
+
+    get_cities = f'SELECT city, ind FROM "{db_index}" LIMIT 8'
+    cities_avail = pd.read_sql(get_cities, db_conn)
+
+    graphs = []
+    for cit in cities_avail["city"]:
+        graphs.append(go.Bar(
+        x=ingredients,
+        y=calculate_index(cit)["prices"],
+        width=calculate_index(cit)["grams"],
+        name=cit
+        ))
+
+    fig = go.Figure(data=graphs)
+
+    fig.update_layout(
+        title=f"Стоимость продуктов в различных городах России",
+        xaxis_title="Ширина столбца отображает массу продукта по рецепту",
+        yaxis_title="Цена за килограмм"
+    )
+    st.plotly_chart(fig)
+
+    coords = []
+    for cit in cities_avail["city"]:
+        entrypoint = "https://nominatim.openstreetmap.org/search"
+        params = {'q': cit,
+                  'format': 'geojson'}
+        coor = requests.get(entrypoint, params=params).json()["features"][0]["geometry"]["coordinates"]
+        coords.append(coor)
+
+    cities_avail["coords"] = pd.Series(coords)
+    cities_avail["ind2"] = (cities_avail["ind"] - 350) * 500
+
+    st.write("Диаметр круга на карте соответствует уровню цен в городе. "
+             "Чтобы добавить точку на карту, проведите скрэппинг с помощью кнопки "
+             "«Посчитать индекс!»")
+
+    st.pydeck_chart(pdk.Deck(
+        map_style='mapbox://styles/mapbox/light-v9',
+        initial_view_state=pdk.ViewState(
+            latitude=55,
+            longitude=55,
+            zoom=3,
+            pitch=0,
+        ),
+        layers=[
+            pdk.Layer(
+                'ScatterplotLayer',
+                data=cities_avail,
+                get_position='coords',
+                get_radius='ind2',
+                elevation_scale=4,
+                elevation_range=[0, 1000],
+                pickable=True,
+                extruded=True,
+                get_fill_color=[200, 50, 50],
+                opacity=0.8,
+                stroked=False,
+                filled=True
+            ),
+        ],
+    ))
+
+
+
 
 
 
     st.subheader("Поискать цены на отдельные товары")
+
+    st.write("Любые — не обязательно ингредиенты борща! Программа также автоматически распознает массу или объем"
+             " товара, если они указаны на сайте, и посчитает стоимость за килограмм или литр.")
 
     city_select2 = st.selectbox("Город", options=city_list, key="city2")
     ingredient_input = st.text_input("Введите товар")
@@ -325,13 +419,29 @@ with st.echo(code_location='below'):
         st.write("Категория: " + cat_for_ingr[ingredient_input])
         category_input = cat_for_ingr[ingredient_input]
     else:
-        category_input = st.text_input("Определите категорию (как на сайте Metro)")
+        category_input = st.text_input("Определите категорию (как на сайте Metro; "
+                                       "для ряда товаров определяется автоматически)")
     start_scraping = st.button(label="Вывести список цен")
 
     if start_scraping:
         st.write(scrape_prices(city_select2, ingredient_input, str(category_input)))
 
+    st.subheader("Использованные технологии")
+    st.markdown("""
+        - Продвинутый `pandas` (квантили, интеграция с базой данных, преобразование датафреймов).
+        - Веб-скреппинг с помощью `Selenium`.
+        - OpenStreetMap API, библиотека `requests`.
+        - Визуализация данных с помощью `plotly`, динамическое построение графика на основе той информации, которая доступна из таблицы.
+        - Приведение слов в начальную форму, библиотека `pymorphy2`.
+        - `numpy` для проведения расчетов.
+        - `SQL` средствами `pandas`.
+        - Регулярные выражения для обработки цены, определения массы и объема товаров.
+        - Работа с геоданными: библиотека `pydeck`.
+        - Библиотека `undetected-chromedriver`, помогающая запускать скрэппинг в фоновом режиме и «примирить» `Streamlit Cloud` с `Selenium`ом (ох как это было непросто...).
+        - Хранение данных в Google Таблицах, библиотека `shillelagh`.
+    """)
 
 
     st.markdown("***")
     st.write("Исходный код:")
+

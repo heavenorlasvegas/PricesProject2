@@ -7,3 +7,5 @@ undetected_chromedriver
 gsheetsdb
 shillelagh
 pymorphy2
+plotly
+pydeck
