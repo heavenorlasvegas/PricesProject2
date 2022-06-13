@@ -117,7 +117,7 @@ with st.echo(code_location='below'):
                     sleep(0.3)
                     sel(s['search'])[s['index']].send_keys(Keys.ENTER)
 
-                    sleep(8)
+                    sleep(7)
 
                 with st.spinner("Выбираю категорию продуктов ..."):
                     if category:
