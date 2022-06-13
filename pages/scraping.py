@@ -1,5 +1,6 @@
 import numpy as np
 import selenium
+import shillelagh.exceptions
 from selenium import webdriver
 from selenium.common import exceptions as sce
 from selenium.webdriver.chrome.service import Service
@@ -28,17 +29,20 @@ db_conn = connect(":memory:", adapter_kwargs={"gsheetsapi": {
                 "service_account_info": st.secrets["gcp_service_account"]
             }})
 with st.echo(code_location='below'):
-    def scrape_prices(city, ingredient, category=""):
+    def scrape_prices(city, ingredient, category="", rescrape=False, return_df=True):
 
         # ЧАСТЬ 1. Проверяем, не собраны ли уже данные
-        with st.spinner("Ищу данные в таблице..."):
+        if not rescrape:
+            with st.spinner("Ищу данные в таблице..."):
 
-            today = date.today().strftime("%d.%m.%Y")
-            get_data = f'SELECT name, price, price_per_kg, price_per_l FROM "{db}" WHERE ingredient = "{ingredient}" AND city = "{city}" AND date = "{today}"'
-            existing_data = pd.read_sql(get_data, db_conn)
-        if not existing_data.empty:
-            return existing_data
-        else:
+                today = date.today().strftime("%d.%m.%Y")
+                get_data = f'SELECT name, price, price_per_kg, price_per_l FROM "{db}" WHERE ingredient = "{ingredient}" AND city = "{city}" AND date = "{today}"'
+                existing_data = pd.read_sql(get_data, db_conn)
+            if not existing_data.empty:
+                if return_df:
+                    return existing_data
+                else:
+                    return ''
 
 
             # ЧАСТЬ 2. Если нет, то собираем их с сайта Metro
@@ -109,7 +113,6 @@ with st.echo(code_location='below'):
                         sel("div.pickup__apply-btn-desk button")[0].click()
                         sleep(0.3)
 
-
                 with st.spinner("Ищу продукты..."):
 
                     sel(s['search'])[s['index']].send_keys(ingredient)
@@ -126,15 +129,12 @@ with st.echo(code_location='below'):
                                 link.click()
 
                 with st.spinner("Листаю сайт..."):
-                    while sel(s['more_button']):
-                        try:
-                            sel(s['more_button'])[0].click()
-                            sleep(2)
-                        except st.errors.StreamlitAPIException:
-                            break
+                    if len(sel(s['more_button'])):
+                        sel(s['more_button'])[0].click()
+                        sleep(2)
 
                 with st.spinner("Собираю данные о ценах..."):
-                    products = driver.find_elements(By.CSS_SELECTOR, s['product'])
+                    products = driver.find_elements(By.CSS_SELECTOR, s['product'])[:51]
                     rows = []
                     for product in products:
                         name = product.find_element(By.CSS_SELECTOR, s['product_name']).text
@@ -162,9 +162,11 @@ with st.echo(code_location='below'):
                                 unit = price_and_unit.find_elements(By.TAG_NAME, "span")[0].get_attribute("innerHTML")[1:].strip()
                             rows.append([name, price, unit])
                     driver.quit()
+
             except Exception as exc:
                 print(str(exc))
                 return st.image(driver.get_screenshot_as_png())
+
         with st.spinner("Обрабатываю данные..."):
             def detect_kg(pr_name):
                 multiplied_regex = re.findall("(\d+)[^\d]*[\*xXхХ][^\d]*([\d.,]+) *г", pr_name)
@@ -196,8 +198,6 @@ with st.echo(code_location='below'):
                 except ValueError:
                     return float("nan")
 
-
-
             df = pd.DataFrame(rows, columns=["name", "price", "unit"])
 
             df["kilograms"] = df["name"].apply(detect_kg)
@@ -208,12 +208,21 @@ with st.echo(code_location='below'):
             df.loc[df["unit"] == "л", "liters"] = 1
             df["price_per_l"] = np.divide(df["price"], df["liters"])
 
+        # ЧАСТЬ 3. Сохраняем данные в таблицу для дальнейшего использования
+
         with st.spinner("Сохраняю данные..."):
             df1 = df
             df1[['ingredient', 'city', 'date']] = [ingredient, city, today]
-            df1.to_sql("new_data", db_conn, method='multi', index=False)
-            db_conn.execute(f'INSERT INTO "{db}" SELECT * FROM new_data')
-        return df[['price', 'price_per_kg', 'price_per_l']]
+            try:
+                df1.to_sql("new_data", db_conn, method='multi', index=False)
+                db_conn.execute(f'INSERT INTO "{db}" SELECT * FROM new_data')
+            except shillelagh.exceptions.ProgrammingError:
+                pass
+
+        if return_df:
+            return df[['name', 'price', 'price_per_kg', 'price_per_l']]
+        else:
+            return ''
 
 
     city_list = ("Москве, Московская область, Санкт-Петербурге, Архангельске, Астрахани, Барнауле, Белгороде, Брянске, Владикавказе, Владимире, Волгограде, Волжском, Вологде, Воронеже, Екатеринбурге, Иваново, Иркутске, Ижевске, Казани, Калининграде, Калуге, Кемерово, Кирове, Краснодаре, Красноярске, Курске, Липецке, Магнитогорске, Набережные Челны, Нижний Новгород, Новая Адыгея, Новокузнецке, Новосибирске, Новороссийске, Омске, Орле, Оренбурге, Пензе, Перми, Пятигорске, Ростове-на-Дону, Рязани, Самаре, Саратове, Смоленске, Серпухове, Ставрополе, Стерлитамаке, Сургуте, Твери, Тольятти, Томске, Туле, Тюмени, Уфе, Ульяновске, Чебоксарах, Челябинске, Ярославле"
@@ -227,17 +236,13 @@ with st.echo(code_location='below'):
 
     city_list = list(map(normal_form, city_list))
 
-
     city_select = st.selectbox("Город", options=city_list)
     ingredient_input = st.text_input("Введите ингредиент")
     category_input = st.text_input("Введите категорию")
     start_scraping = st.button(label="Вывести список цен")
 
-
     if start_scraping:
         st.write(scrape_prices(city_select, ingredient_input, str(category_input)))
-
-
 
     st.markdown("***")
     st.write("Исходный код:")
