@@ -286,7 +286,7 @@ with st.echo(code_location='below'):
         progress = 0.0
         my_bar = st.progress(progress)
         for product in recipe:
-            prices[product] = scrape_prices(city, product, cat_for_ingr[product.lower()])["price_per_kg"]
+            prices.product = scrape_prices(city, product, cat_for_ingr[product.lower()])["price_per_kg"]
             progress += 1/9
             progress = min(1, progress)
             my_bar.progress(progress)
