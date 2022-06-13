@@ -9,4 +9,3 @@ shillelagh
 pymorphy2
 plotly
 pydeck
-streamlit
