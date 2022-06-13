@@ -104,20 +104,20 @@ with st.echo(code_location='below'):
 
                     sel(".obtainments-list__content")[1].click()
                     sel("div.select-item__input")[0].click()
-                    sleep(0.2)
+                    sleep(0.3)
                     sel("input.multiselect__input")[0].send_keys(city)
                     sel("input.multiselect__input")[0].send_keys(Keys.ENTER)
-                    sleep(0.2)
+                    sleep(0.3)
                     sel("div.pickup__apply-btn-desk button")[0].click()
-                    sleep(0.2)
+                    sleep(0.3)
 
                 with st.spinner("Ищу продукты..."):
 
                     sel(s['search'])[s['index']].send_keys(ingredient)
-                    sleep(0.2)
+                    sleep(0.3)
                     sel(s['search'])[s['index']].send_keys(Keys.ENTER)
 
-                    sleep(5)
+                    sleep(8)
 
                 with st.spinner("Выбираю категорию продуктов ..."):
                     if category:
