@@ -123,7 +123,6 @@ with st.echo(code_location='below'):
                     if category:
                         category_links = sel(s['catalog'])[0].find_elements(By.TAG_NAME, "a")
                         for link in category_links:
-                            st.write(link.get_attribute("innerHTML"))
                             if link.get_attribute("innerHTML").find(category) > -1:
                                 link.click()
                                 break
