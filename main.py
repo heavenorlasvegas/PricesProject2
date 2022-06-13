@@ -99,41 +99,42 @@ with st.echo(code_location='below'):
                              'more_button': "a.catalog-load-more__button"}
 
                 with st.spinner("Выбираю город..."):
-                    if city != "Москва":
-                        sel(s['delivery'])[0].click()
+                    sel(s['delivery'])[0].click()
 
 
-                        sel(".obtainments-list__content")[1].click()
-                        sel("div.select-item__input")[0].click()
-                        sleep(0.3)
-                        sel("input.multiselect__input")[0].send_keys(city)
-                        sel("input.multiselect__input")[0].send_keys(Keys.ENTER)
-                        sleep(0.3)
-                        sel("div.pickup__apply-btn-desk button")[0].click()
-                        sleep(0.3)
+                    sel(".obtainments-list__content")[1].click()
+                    sel("div.select-item__input")[0].click()
+                    sleep(0.2)
+                    sel("input.multiselect__input")[0].send_keys(city)
+                    sel("input.multiselect__input")[0].send_keys(Keys.ENTER)
+                    sleep(0.2)
+                    sel("div.pickup__apply-btn-desk button")[0].click()
+                    sleep(0.2)
 
                 with st.spinner("Ищу продукты..."):
 
                     sel(s['search'])[s['index']].send_keys(ingredient)
-                    sleep(0.3)
+                    sleep(0.2)
                     sel(s['search'])[s['index']].send_keys(Keys.ENTER)
 
-                    sleep(3)
+                    sleep(5)
 
                 with st.spinner("Выбираю категорию продуктов ..."):
                     if category:
                         category_links = sel(s['catalog'])[0].find_elements(By.TAG_NAME, "a")
                         for link in category_links:
+                            st.write(link.get_attribute("innerHTML"))
                             if link.get_attribute("innerHTML").find(category) > -1:
                                 link.click()
+                                break
 
-                with st.spinner("Листаю сайт..."):
-                    if len(sel(s['more_button'])):
-                        sel(s['more_button'])[0].click()
-                        sleep(2)
+                #with st.spinner("Листаю сайт..."):
+                #    if len(sel(s['more_button'])):
+                #        sel(s['more_button'])[0].click()
+                #        sleep(2)
 
                 with st.spinner("Собираю данные о ценах..."):
-                    products = driver.find_elements(By.CSS_SELECTOR, s['product'])[:51]
+                    products = driver.find_elements(By.CSS_SELECTOR, s['product'])[:15]
                     rows = []
                     for product in products:
                         name = product.find_element(By.CSS_SELECTOR, s['product_name']).text
@@ -141,8 +142,9 @@ with st.echo(code_location='below'):
                             continue
                         else:
                             if new_version:
-                                price = float(product.find_elements(By.CSS_SELECTOR, "span.base-product-prices__actual-sum")[0]
-                                              .get_attribute("innerHTML").replace("&nbsp;", ""))
+                                price = float(product.find_elements(By.CSS_SELECTOR,
+                                                                    "span.base-product-prices__actual-sum")[0]
+                                                     .get_attribute("innerHTML").replace("&nbsp;", ""))
                                 unit = sel("span.base-product-prices__actual-unit")[0].get_attribute("innerHTML")[1:]
                             else:
 
@@ -154,11 +156,13 @@ with st.echo(code_location='below'):
                                         return float("nan")
 
                                 price_and_unit = product.find_elements(
-                                    By.CSS_SELECTOR, "div.catalog-item_price-lvl_current, div.catalog-item_price-current")[0]
+                                    By.CSS_SELECTOR,
+                                    "div.catalog-item_price-lvl_current, div.catalog-item_price-current")[0]
                                 if price_and_unit.get_attribute("innerHTML").find("Нет") > -1:
                                     continue
                                 price = detect_price(price_and_unit)
-                                unit = price_and_unit.find_elements(By.TAG_NAME, "span")[0].get_attribute("innerHTML")[1:].strip()
+                                unit = (price_and_unit.find_elements(By.TAG_NAME, "span")[0]
+                                                      .get_attribute("innerHTML")[1:].strip())
                             rows.append([name, price, unit])
                     driver.quit()
 
@@ -213,7 +217,7 @@ with st.echo(code_location='below'):
             df1 = df
             df1[['ingredient', 'city', 'date']] = [ingredient, city, today]
             try:
-                df1.to_sql("new_data", db_conn, method='multi', index=False)
+                df1.to_sql("new_data", db_conn, method='multi', index=False, if_exists="replace")
                 db_conn.execute(f'INSERT INTO "{db}" SELECT * FROM new_data')
             except shillelagh.exceptions.ProgrammingError:
                 pass
@@ -224,7 +228,29 @@ with st.echo(code_location='below'):
             return ''
 
 
-    city_list = ("Москве, Московская область, Санкт-Петербурге, Архангельске, Астрахани, Барнауле, Белгороде, Брянске, Владикавказе, Владимире, Волгограде, Волжском, Вологде, Воронеже, Екатеринбурге, Иваново, Иркутске, Ижевске, Казани, Калининграде, Калуге, Кемерово, Кирове, Краснодаре, Красноярске, Курске, Липецке, Магнитогорске, Набережные Челны, Нижний Новгород, Новая Адыгея, Новокузнецке, Новосибирске, Новороссийске, Омске, Орле, Оренбурге, Пензе, Перми, Пятигорске, Ростове-на-Дону, Рязани, Самаре, Саратове, Смоленске, Серпухове, Ставрополе, Стерлитамаке, Сургуте, Твери, Тольятти, Томске, Туле, Тюмени, Уфе, Ульяновске, Чебоксарах, Челябинске, Ярославле"
+    recipe_list = """Картофель — 350 г
+    Говядина лопатка — 500 г
+    Капуста — 200 г
+    Свекла — 130 г
+    Лук — 80 г
+    Морковь — 80 г
+    Чеснок — 6 г
+    Ржаной хлеб — 200 г
+    Сметана — 100 г """.split("\n")
+    recipe = pd.DataFrame(columns=["Масса, г."])
+    for ingr in recipe_list:
+        ingr = ingr.strip().split(" — ")
+        ingr_index = ingr[0]
+        ingr_grams = int(ingr[1][:-2])
+        recipe.loc[ingr_index] = ingr_grams
+    recipe = recipe.transpose()
+    city_list = ("Москве, Московская область, Санкт-Петербурге, Архангельске, Астрахани, Барнауле, Белгороде, "
+                 "Брянске, Владикавказе, Владимире, Волгограде, Волжском, Вологде, Воронеже, Екатеринбурге, Иваново, "
+                 "Иркутске, Ижевске, Казани, Калининграде, Калуге, Кемерово, Кирове, Краснодаре, Красноярске, Курске, "
+                 "Липецке, Магнитогорске, Набережные Челны, Нижний Новгород, Новая Адыгея, Новокузнецке, "
+                 "Новосибирске, Новороссийске, Омске, Орле, Оренбурге, Пензе, Перми, Пятигорске, Ростове-на-Дону, "
+                 "Рязани, Самаре, Саратове, Смоленске, Серпухове, Ставрополе, Стерлитамаке, Сургуте, Твери, Тольятти, "
+                 "Томске, Туле, Тюмени, Уфе, Ульяновске, Чебоксарах, Челябинске, Ярославле "
                  .split(", "))
 
     def normal_form(word):
@@ -234,14 +260,56 @@ with st.echo(code_location='below'):
             return word
 
     city_list = list(map(normal_form, city_list))
+    cat_for_ingr = {"молоко": "Молоко", "ржаной хлеб": "Хлеб, лаваш", "картофель": "Овощи", "капуста": "Овощи", "лук":
+        "Овощи", "морковь": "Овощи", "свекла": "Овощи", "чеснок": "Овощи", "говядина лопатка": "",
+                    "сметана": "Сметана"}
 
-    city_select = st.selectbox("Город", options=city_list)
-    ingredient_input = st.text_input("Введите ингредиент")
-    category_input = st.text_input("Введите категорию")
+    def calculate_index(city):
+        for product in recipe:
+            st.write(product)
+            st.write(cat_for_ingr[product.lower()])
+            st.write(scrape_prices(city, product, cat_for_ingr[product.lower()]))
+
+
+
+    # Фронтенд
+
+    st.title("Индекс борща")
+
+    st.markdown("""**Индекс борща** — это интуитивно понятная метрика потребительских цен и реальных доходов населения,
+    предложенная [Владимирстатом](https://vladimirstat.gks.ru/) и популяризированная изданием 
+    [Ведомости](https://vedomosti.ru). Индекс рассчитывается как количество блюд на четверых,
+    которые можно приготовить, потратив при этом весь средний располагаемый доход.""")
+    
+    st.subheader("Рецепт борща")
+
+    st.dataframe(recipe)
+
+
+    st.subheader("Посчитать индекс борща")
+
+    city_select1 = st.selectbox("Город", options=city_list, key="city1")
+    calculate_button = st.button(label="Посчитать индекс!")
+    if calculate_button:
+        st.write(calculate_index(city_select1))
+
+
+
+    st.subheader("Поискать цены на отдельные товары")
+
+    city_select2 = st.selectbox("Город", options=city_list, key="city2")
+    ingredient_input = st.text_input("Введите товар")
+    if ingredient_input in cat_for_ingr:
+        st.write("Категория: " + cat_for_ingr[ingredient_input])
+        category_input = cat_for_ingr[ingredient_input]
+    else:
+        category_input = st.text_input("Определите категорию (как на сайте Metro)")
     start_scraping = st.button(label="Вывести список цен")
 
     if start_scraping:
-        st.write(scrape_prices(city_select, ingredient_input, str(category_input)))
+        st.write(scrape_prices(city_select2, ingredient_input, str(category_input)))
+
+
 
     st.markdown("***")
     st.write("Исходный код:")
