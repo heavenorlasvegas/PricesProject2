@@ -65,7 +65,7 @@ with st.echo(code_location='below'):
                 driver = uc.Chrome(options=options)
                 # END FROM
                 #driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
-                driver.set_page_load_timeout(3)
+                driver.set_page_load_timeout(8)
             try:
                 with st.spinner("Подключаюсь к сайту Metro..."):
                     def sel(selector):
@@ -107,12 +107,12 @@ with st.echo(code_location='below'):
 
                     sel(".obtainments-list__content")[1].click()
                     sel("div.select-item__input")[0].click()
-                    sleep(0.1)
+                    sleep(0.5)
                     sel("input.multiselect__input")[0].send_keys(city)
                     sel("input.multiselect__input")[0].send_keys(Keys.ENTER)
-                    sleep(0.1)
+                    sleep(0.5)
                     sel("div.pickup__apply-btn-desk button")[0].click()
-                    sleep(0.1)
+                    sleep(0.5)
 
                 with st.spinner(ingredient + ". Ищу продукты..."):
 
@@ -120,7 +120,7 @@ with st.echo(code_location='below'):
                     sleep(0.1)
                     sel(s['search'])[s['index']].send_keys(Keys.ENTER)
 
-                    sleep(3)
+                    sleep(5)
 
                 with st.spinner(ingredient + ". Выбираю категорию продуктов ..."):
                     if category:
@@ -128,7 +128,7 @@ with st.echo(code_location='below'):
                         for link in category_links:
                             if link.find_elements(By.TAG_NAME, "span")[0].get_attribute("innerHTML") == category:
                                 link.click()
-                    sleep(2)
+                    sleep(3)
 
                 #with st.spinner("Листаю сайт..."):
                 #    if len(sel(s['more_button'])):
