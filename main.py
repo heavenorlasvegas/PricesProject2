@@ -27,43 +27,44 @@ db = st.secrets["private_gsheets_url"]
 db_conn = connect(":memory:", adapter_kwargs={"gsheetsapi": {
                 "service_account_info": st.secrets["gcp_service_account"]
             }})
+db_index = st.secrets["private_gsheets_url1"]
+today = date.today().strftime("%d.%m.%Y")
 with st.echo(code_location='below'):
     def scrape_prices(city, ingredient, category="", rescrape=False, return_df=True):
 
         # ЧАСТЬ 1. Проверяем, не собраны ли уже данные
         if not rescrape:
-            with st.spinner("Ищу данные в таблице..."):
+            with st.spinner(ingredient + ". Ищу данные в таблице..."):
 
-                today = date.today().strftime("%d.%m.%Y")
-                get_data = f'SELECT name, price, price_per_kg, price_per_l FROM "{db}" WHERE ingredient = "{ingredient}" AND city = "{city}" AND date = "{today}"'
+                get_data = f'SELECT name, price, price_per_kg, price_per_l FROM "{db}" WHERE ingredient = "{ingredient}" AND city = "{city}"'
                 existing_data = pd.read_sql(get_data, db_conn)
-            if not existing_data.empty:
-                if return_df:
-                    return existing_data
-                else:
-                    return ''
+                if not existing_data.empty:
+                    if return_df:
+                        return existing_data
+                    else:
+                        return ''
 
 
             # ЧАСТЬ 2. Если нет, то собираем их с сайта Metro
+
+            with st.spinner(ingredient + ". Запускаю виртуальный браузер..."):
+
+                options = webdriver.ChromeOptions()
+                options.headless = True
+
+                # FROM: https://github.com/Franky1/Streamlit-Selenium/blob/main/streamlit_app.py
+                options.add_argument("--headless")
+                options.add_argument("--no-sandbox")
+                options.add_argument("--disable-dev-shm-usage")
+                options.add_argument("--disable-gpu")
+                options.add_argument("--disable-features=NetworkService")
+                options.add_argument("--window-size=1920x1080")
+                options.add_argument("--disable-features=VizDisplayCompositor")
+                driver = uc.Chrome(options=options)
+                # END FROM
+                #driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+                driver.set_page_load_timeout(3)
             try:
-                with st.spinner("Запускаю виртуальный браузер..."):
-
-                    options = webdriver.ChromeOptions()
-                    options.headless = True
-
-                    # FROM: https://github.com/Franky1/Streamlit-Selenium/blob/main/streamlit_app.py
-                    options.add_argument("--headless")
-                    options.add_argument("--no-sandbox")
-                    options.add_argument("--disable-dev-shm-usage")
-                    options.add_argument("--disable-gpu")
-                    options.add_argument("--disable-features=NetworkService")
-                    options.add_argument("--window-size=1920x1080")
-                    options.add_argument("--disable-features=VizDisplayCompositor")
-                    driver = uc.Chrome(options=options)
-                    # END FROM
-                    #driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
-                    driver.set_page_load_timeout(5)
-
                 with st.spinner("Подключаюсь к сайту Metro..."):
                     def sel(selector):
                         return driver.find_elements(By.CSS_SELECTOR, selector)
@@ -98,78 +99,80 @@ with st.echo(code_location='below'):
                              'product_name': "a.catalog-item_name",
                              'more_button': "a.catalog-load-more__button"}
 
-                with st.spinner("Выбираю город..."):
+                with st.spinner(ingredient + ". Выбираю город..."):
                     sel(s['delivery'])[0].click()
 
 
                     sel(".obtainments-list__content")[1].click()
                     sel("div.select-item__input")[0].click()
-                    sleep(0.3)
+                    sleep(0.1)
                     sel("input.multiselect__input")[0].send_keys(city)
                     sel("input.multiselect__input")[0].send_keys(Keys.ENTER)
-                    sleep(0.3)
+                    sleep(0.1)
                     sel("div.pickup__apply-btn-desk button")[0].click()
-                    sleep(0.3)
+                    sleep(0.1)
 
-                with st.spinner("Ищу продукты..."):
+                with st.spinner(ingredient + ". Ищу продукты..."):
 
                     sel(s['search'])[s['index']].send_keys(ingredient)
-                    sleep(0.3)
+                    sleep(0.1)
                     sel(s['search'])[s['index']].send_keys(Keys.ENTER)
 
-                    sleep(7)
+                    sleep(3)
 
-                with st.spinner("Выбираю категорию продуктов ..."):
+                with st.spinner(ingredient + ". Выбираю категорию продуктов ..."):
                     if category:
                         category_links = sel(s['catalog'])[0].find_elements(By.TAG_NAME, "a")
                         for link in category_links:
-                            if link.get_attribute("innerHTML").find(category) > -1:
+                            if link.find_elements(By.TAG_NAME, "span")[0].get_attribute("innerHTML") == category:
                                 link.click()
-                                break
+                    sleep(2)
 
                 #with st.spinner("Листаю сайт..."):
                 #    if len(sel(s['more_button'])):
                 #        sel(s['more_button'])[0].click()
                 #        sleep(2)
 
-                with st.spinner("Собираю данные о ценах..."):
-                    products = driver.find_elements(By.CSS_SELECTOR, s['product'])[:15]
+                with st.spinner(ingredient + ". Собираю данные о ценах..."):
+                    products = driver.find_elements(By.CSS_SELECTOR, s['product'])[:26]
                     rows = []
                     for product in products:
-                        name = product.find_element(By.CSS_SELECTOR, s['product_name']).text
-                        if not name:
+                        name = product.find_elements(By.CSS_SELECTOR, s['product_name'])
+                        if not len(name):
                             continue
                         else:
-                            if new_version:
-                                price = float(product.find_elements(By.CSS_SELECTOR,
-                                                                    "span.base-product-prices__actual-sum")[0]
-                                                     .get_attribute("innerHTML").replace("&nbsp;", ""))
-                                unit = sel("span.base-product-prices__actual-unit")[0].get_attribute("innerHTML")[1:]
-                            else:
+                            name = name[0].text
+                            if name:
+                                if new_version:
+                                    price = float(product.find_elements(By.CSS_SELECTOR,
+                                                                        "span.base-product-prices__actual-sum")[0]
+                                                         .get_attribute("innerHTML").replace("&nbsp;", ""))
+                                    unit = sel("span.base-product-prices__actual-unit")[0].get_attribute("innerHTML")[1:]
+                                else:
 
-                                def detect_price(pr):
-                                    pr = pr.get_attribute('innerHTML').replace(" ", "")
-                                    if re.findall("([\d.]+)", pr):
-                                        return float(re.findall("([\d.]+)", pr)[0])
-                                    else:
-                                        return float("nan")
+                                    def detect_price(pr):
+                                        pr = pr.get_attribute('innerHTML').replace(" ", "")
+                                        if re.findall("([\d.]+)", pr):
+                                            return float(re.findall("([\d.]+)", pr)[0])
+                                        else:
+                                            return float("nan")
 
-                                price_and_unit = product.find_elements(
-                                    By.CSS_SELECTOR,
-                                    "div.catalog-item_price-lvl_current, div.catalog-item_price-current")[0]
-                                if price_and_unit.get_attribute("innerHTML").find("Нет") > -1:
-                                    continue
-                                price = detect_price(price_and_unit)
-                                unit = (price_and_unit.find_elements(By.TAG_NAME, "span")[0]
-                                                      .get_attribute("innerHTML")[1:].strip())
-                            rows.append([name, price, unit])
+                                    price_and_unit = product.find_elements(
+                                        By.CSS_SELECTOR,
+                                        "div.catalog-item_price-lvl_current, div.catalog-item_price-current")[0]
+                                    if price_and_unit.get_attribute("innerHTML").find("Нет") > -1:
+                                        continue
+                                    price = detect_price(price_and_unit)
+                                    unit = (price_and_unit.find_elements(By.TAG_NAME, "span")[0]
+                                                          .get_attribute("innerHTML")[1:].strip())
+                                rows.append([name, price, unit])
                     driver.quit()
 
             except Exception as exc:
                 print(str(exc))
                 return st.image(driver.get_screenshot_as_png())
 
-        with st.spinner("Обрабатываю данные..."):
+        with st.spinner(ingredient + ". Обрабатываю данные..."):
             def detect_kg(pr_name):
                 multiplied_regex = re.findall("(\d+)[^\d]*[\*xXхХ][^\d]*([\d.,]+) *г", pr_name)
                 grams_regex = re.findall("([\d.,]+) *г", pr_name)
@@ -212,7 +215,7 @@ with st.echo(code_location='below'):
 
         # ЧАСТЬ 3. Сохраняем данные в таблицу для дальнейшего использования
 
-        with st.spinner("Сохраняю данные..."):
+        with st.spinner(ingredient + ". Сохраняю данные для других пользователей..."):
             df1 = df
             df1[['ingredient', 'city', 'date']] = [ingredient, city, today]
             try:
@@ -234,7 +237,7 @@ with st.echo(code_location='below'):
     Лук — 80 г
     Морковь — 80 г
     Чеснок — 6 г
-    Ржаной хлеб — 200 г
+    Хлеб — 200 г
     Сметана — 100 г """.split("\n")
     recipe = pd.DataFrame(columns=["Масса, г."])
     for ingr in recipe_list:
@@ -259,15 +262,28 @@ with st.echo(code_location='below'):
             return word
 
     city_list = list(map(normal_form, city_list))
-    cat_for_ingr = {"молоко": "Молоко", "ржаной хлеб": "Хлеб, лаваш", "картофель": "Овощи", "капуста": "Овощи", "лук":
+    cat_for_ingr = {"молоко": "Молоко", "хлеб": "Хлеб, лаваш", "картофель": "Овощи", "капуста": "Овощи", "лук":
         "Овощи", "морковь": "Овощи", "свекла": "Овощи", "чеснок": "Овощи", "говядина лопатка": "",
                     "сметана": "Сметана"}
 
-    def calculate_index(city):
+    def calculate_index(city, quantile=0.2):
+        prices = pd.DataFrame()
+        progress = 0.0
+        my_bar = st.progress(progress)
         for product in recipe:
-            st.write(product)
-            st.write(cat_for_ingr[product.lower()])
-            st.write(scrape_prices(city, product, cat_for_ingr[product.lower()]))
+            prices[product] = scrape_prices(city, product, cat_for_ingr[product.lower()])["price_per_kg"]
+            progress += 1/9
+            progress = min(1, progress)
+            my_bar.progress(progress)
+        prices_quant = np.nanquantile(prices, quantile, axis=0)
+        grams = recipe.transpose()["Масса, г."] / 1000
+        costs = prices_quant * grams
+        return pd.DataFrame({"quant": quantile,
+                             "prices": prices_quant,
+                             "grams": grams,
+                             "costs": costs,
+                             "index": sum(costs)})
+
 
 
 
@@ -287,10 +303,17 @@ with st.echo(code_location='below'):
 
     st.subheader("Посчитать индекс борща")
 
-    city_select1 = st.selectbox("Город", options=city_list, key="city1")
-    calculate_button = st.button(label="Посчитать индекс!")
-    if calculate_button:
-        st.write(calculate_index(city_select1))
+    with st.container():
+
+        city_select1 = st.selectbox("Город", options=city_list, key="city1")
+        calculate_button = st.button(label="Посчитать индекс!")
+        c = st.empty()
+        if calculate_button:
+            borsch_index = calculate_index(city_select1)
+            ind_val = borsch_index["index"][0]
+            command = f'INSERT INTO "{db_index}" VALUES ("{city_select1}", "{today}", {ind_val})'
+            db_conn.execute(command)
+            c.write(ind_val)
 
 
 
