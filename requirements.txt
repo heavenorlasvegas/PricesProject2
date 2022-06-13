@@ -6,3 +6,5 @@ requests
 undetected_chromedriver
 google
 gsheetsdb
+shillelagh
+pymorphy2
