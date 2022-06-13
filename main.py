@@ -15,9 +15,8 @@ import re
 import streamlit as st
 import undetected_chromedriver as uc
 
-
 with st.echo(code_location='below'):
-    st.balloons()
-    st.title("Привет :)")
+
+
     st.markdown("***")
     st.write("Исходный код:")

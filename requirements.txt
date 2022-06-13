@@ -4,3 +4,5 @@ webdriver_manager
 pandas
 requests
 undetected_chromedriver
+google
+gsheetsdb
